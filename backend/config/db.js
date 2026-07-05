@@ -1,0 +1,29 @@
+import mongoose from 'mongoose';
+
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGO_URI);
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error(`MongoDB connection error: ${error.message}`);
+    process.exit(1);
+  }
+
+  mongoose.connection.on('disconnected', () => {
+    console.error('MongoDB disconnected. Reconnecting in 5 seconds...');
+    setTimeout(async () => {
+      try {
+        await mongoose.connect(process.env.MONGO_URI);
+        console.log('MongoDB reconnected');
+      } catch (err) {
+        console.error('MongoDB reconnect failed:', err.message);
+      }
+    }, 5000);
+  });
+
+  mongoose.connection.on('error', (err) => {
+    console.error('MongoDB error:', err.message);
+  });
+};
+
+export default connectDB;

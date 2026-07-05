@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Project specific
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# pnpm cache
+.pnpm-store/
+frontend/.pnpm-store/
+
+# Frontend temp logs
+frontend/vite-dev*.log
+
+# Stray dev files
+ChatBotWidget.jsx
+krushimart_fixes.md
+PROMPT.md
+download_images.py
+generate_report.py
+register-admin.ps1
+run-backend.ps1
+run-backend.bat
+start*.ps1
+start*.bat
+run*.bat
+START-BOTH.bat
+structure.txt
+requirements.txt
+index.html
+package-lock.json
+pnpm-lock.yaml
+mongodb-troubleshooting.html
+KrushiMart_Software_Engineering_Report.docx
+TECHNICAL_DOCUMENTATION.md
+DEPLOYMENT_CHECKLIST.md
+README_DATASET.md
+sprint2/
+backend/inspect_products.js
+backend/export_local_data.js
+backend/update_products_approval.js
+frontend/test.html
+*.png
+*.sql
+*.docx
+server.js

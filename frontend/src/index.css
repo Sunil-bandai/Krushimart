@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-body-md overflow-x-hidden antialiased;
+  }
+
+  *::selection {
+    @apply bg-primary text-on-primary;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .perspective-container {
+    perspective: 1000px;
+  }
+
+  /* Shop grid product card tilt */
+  .tilt-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    transform-style: preserve-3d;
+  }
+  .tilt-card:hover {
+    transform: rotateY(5deg) rotateX(5deg) scale(1.02);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Landing page hero cards */
+  .hero-tilt-card {
+    transform: rotateY(-15deg) rotateX(5deg);
+    transition: transform 0.5s ease;
+  }
+  .hero-tilt-card:hover {
+    transform: rotateY(0deg) rotateX(0deg) scale(1.05);
+  }
+
+  /* Glow decorative blob */
+  .glow-blob {
+    filter: blur(80px);
+    @apply opacity-40;
+  }
+
+  /* Fixed background orb */
+  .floating-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    z-index: -1;
+    @apply opacity-15;
+  }
+
+  /* Product detail page image tilt */
+  .product-tilt {
+    transition: transform 0.4s ease-out;
+  }
+  .product-tilt:hover {
+    transform: rotateY(5deg) rotateX(2deg) scale(1.02);
+  }
+
+  /* Hide scrollbars while keeping scroll */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.material-fill {
+  font-variation-settings: 'FILL' 1;
+}
