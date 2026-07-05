@@ -160,4 +160,4 @@ cd frontend && npm run dev   # Frontend on port 3002
 | Ashish Chougule | Frontend Lead |
 | Vijay | Database |
 
-Guide: [Guide Name]
+Guide: Manjunath mathad
