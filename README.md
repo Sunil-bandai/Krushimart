@@ -158,6 +158,6 @@ cd frontend && npm run dev   # Frontend on port 3002
 | Sunil Bandai | Admin / Full Stack |
 | Pramod Nandagavi | Backend Lead |
 | Ashish Chougule | Frontend Lead |
-| Vijay | Database |
+| Vijay Bedage| Database |
 
 Guide: Manjunath mathad
