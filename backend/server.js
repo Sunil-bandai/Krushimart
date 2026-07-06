@@ -58,6 +58,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(uploadsDir));
 
+const frontendImagesDir = path.resolve(__dirname, '../frontend/public');
+app.use('/images', express.static(path.join(frontendImagesDir, 'images')));
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
