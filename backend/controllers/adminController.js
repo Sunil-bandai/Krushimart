@@ -1,7 +1,9 @@
 import User from '../models/User.js';
 import Product from '../models/Product.js';
 import Order from '../models/Order.js';
+import SubOrder from '../models/SubOrder.js';
 import Issue from '../models/Issue.js';
+import { generateOrderReport } from '../utils/reportGenerator.js';
 
 export const getUsers = async (req, res) => {
   try {
@@ -117,5 +119,33 @@ export const getAnalytics = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error fetching analytics' });
+  }
+};
+
+export const generateOrdersReport = async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate('consumerId', 'name email phone')
+      .populate('items.productId', 'name price unit')
+      .sort({ createdAt: -1 });
+
+    const subOrders = await SubOrder.find()
+      .populate('orderId', 'orderId')
+      .populate('farmerId', 'name')
+      .populate('consumerId', 'name')
+      .populate('items.productId', 'name price unit')
+      .sort({ createdAt: -1 });
+
+    const pdfBuffer = await generateOrderReport(orders, subOrders, {
+      title: 'KrushiMart Order Report',
+      generatedBy: req.user?.name || 'Admin',
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="KrushiMart_Order_Report_${new Date().toISOString().split('T')[0]}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('generateOrdersReport error:', err);
+    res.status(500).json({ success: false, message: 'Server error generating report' });
   }
 };
