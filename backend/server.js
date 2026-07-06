@@ -110,8 +110,8 @@ const server = app.listen(PORT, () => console.log(`Server running on port ${PORT
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Waiting 3 seconds to retry...`);
-    setTimeout(() => server.listen(PORT), 3000);
+    console.error(`Port ${PORT} is already in use. Kill the process using it or set PORT env variable.`);
+    process.exit(1);
   } else {
     console.error('Server error:', err);
   }
