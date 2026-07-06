@@ -59,6 +59,7 @@ sprint2/
 backend/inspect_products.js
 backend/export_local_data.js
 backend/update_products_approval.js
+backend/seed.js
 frontend/test.html
 *.png
 *.sql

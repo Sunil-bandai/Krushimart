@@ -17,6 +17,13 @@ const categoryColors = {
   Other: '#94a3b8',
 };
 
+const issueStatusColors = {
+  pending: 'bg-yellow-500/20 text-yellow-500',
+  reviewing: 'bg-blue-500/20 text-blue-500',
+  resolved: 'bg-green-500/20 text-green-500',
+  rejected: 'bg-red-500/20 text-red-500',
+};
+
 const AdminDashboard = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -38,24 +45,33 @@ const AdminDashboard = () => {
     }
   });
 
+  const { data: issuesData } = useQuery({
+    queryKey: ['admin-issues'],
+    queryFn: async () => {
+      const res = await api.get('/issues');
+      return res.data.data || [];
+    }
+  });
+
   const approveMutation = useMutation({
     mutationFn: (id) => api.put(`/admin/products/${id}/approve`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-analytics'] });
-    },
-    onError: () => {
-      useUIStore.getState().showNotification('Failed to approve product', 'error');
-    }
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-analytics'] }),
+    onError: () => useUIStore.getState().showNotification('Failed to approve product', 'error'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/admin/products/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-analytics'] }),
+    onError: () => useUIStore.getState().showNotification('Failed to delete product', 'error'),
+  });
+
+  const resolveIssueMutation = useMutation({
+    mutationFn: ({ id, status, adminReply }) => api.put(`/issues/${id}/resolve`, { status, adminReply }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-issues'] });
+      useUIStore.getState().showNotification('Issue updated', 'success');
     },
-    onError: () => {
-      useUIStore.getState().showNotification('Failed to delete product', 'error');
-    }
+    onError: () => useUIStore.getState().showNotification('Failed to update issue', 'error'),
   });
 
   const a = analyticsData || {};
@@ -64,40 +80,14 @@ const AdminDashboard = () => {
   const recentUsers = a.recentUsers || [];
   const pendingProducts = a.pendingProductList || [];
   const orders = Array.isArray(ordersData) ? ordersData : [];
+  const issues = Array.isArray(issuesData) ? issuesData : [];
+  const pendingIssues = issues.filter(i => i.status === 'pending');
 
   const stats = [
-    {
-      icon: 'payments',
-      label: 'Total Revenue',
-      value: `₹${(a.totalRevenue || 0).toLocaleString()}`,
-      badge: `${a.totalOrders || 0} orders`,
-      borderColor: 'border-l-4 border-primary',
-      iconBg: 'bg-primary/10 text-primary',
-    },
-    {
-      icon: 'groups',
-      label: 'Total Users',
-      value: (a.totalUsers || 0).toLocaleString(),
-      badge: `${a.totalFarmers || 0} farmers`,
-      borderColor: 'border-l-4 border-tertiary-container',
-      iconBg: 'bg-tertiary-container/10 text-tertiary-container',
-    },
-    {
-      icon: 'package_2',
-      label: 'Total Products',
-      value: (a.totalProducts || 0).toLocaleString(),
-      badge: `${a.pendingProducts || 0} pending`,
-      borderColor: 'border-l-4 border-secondary',
-      iconBg: 'bg-secondary/10 text-secondary',
-    },
-    {
-      icon: 'trending_up',
-      label: 'Approved Products',
-      value: (a.approvedProducts || 0).toLocaleString(),
-      badge: `${a.totalProducts ? Math.round((a.approvedProducts / a.totalProducts) * 100) : 0}% approved`,
-      borderColor: 'border-l-4 border-surface-tint',
-      iconBg: 'bg-surface-tint/10 text-surface-tint',
-    },
+    { icon: 'payments', label: 'Total Revenue', value: `₹${(a.totalRevenue || 0).toLocaleString()}`, badge: `${a.totalOrders || 0} orders`, borderColor: 'border-l-4 border-primary', iconBg: 'bg-primary/10 text-primary' },
+    { icon: 'groups', label: 'Total Users', value: (a.totalUsers || 0).toLocaleString(), badge: `${a.totalFarmers || 0} farmers`, borderColor: 'border-l-4 border-tertiary-container', iconBg: 'bg-tertiary-container/10 text-tertiary-container' },
+    { icon: 'package_2', label: 'Total Products', value: (a.totalProducts || 0).toLocaleString(), badge: `${a.pendingProducts || 0} pending`, borderColor: 'border-l-4 border-secondary', iconBg: 'bg-secondary/10 text-secondary' },
+    { icon: 'warning', label: 'Open Issues', value: pendingIssues.length, badge: `${issues.length} total`, borderColor: 'border-l-4 border-error', iconBg: 'bg-error/10 text-error' },
   ];
 
   const orderStatusCounts = { pending: 0, confirmed: 0, dispatched: 0, delivered: 0 };
@@ -113,18 +103,14 @@ const AdminDashboard = () => {
           navItems={ADMIN_NAV}
           iconNode={<span className="material-symbols-outlined text-purple-500">admin_panel_settings</span>}
         />
-
         <main className="ml-64 pt-28 px-8 pb-12 min-h-screen bg-surface w-[calc(100%-16rem)]">
           <div className="mb-10 flex justify-between items-end">
             <div>
               <h1 className="font-h1 text-h2 text-on-surface mb-2">Overview</h1>
-              <p className="text-on-surface-variant font-body-md">
-                Manage your agricultural ecosystem and monitor marketplace health.
-              </p>
+              <p className="text-on-surface-variant font-body-md">Manage your agricultural ecosystem and monitor marketplace health.</p>
             </div>
           </div>
 
-          {/* Stats Cards */}
           {analyticsLoading ? (
             <div className="text-center py-10 text-primary animate-pulse">Loading analytics...</div>
           ) : (
@@ -133,9 +119,7 @@ const AdminDashboard = () => {
                 {stats.map(({ icon, label, value, badge, borderColor, iconBg }) => (
                   <div key={label} className={`glass-panel p-6 rounded-2xl bg-surface-container hover:scale-[1.02] transition-transform duration-300 ${borderColor}`}>
                     <div className="flex justify-between items-start mb-4">
-                      <div className={`p-3 rounded-xl ${iconBg}`}>
-                        <span className="material-symbols-outlined">{icon}</span>
-                      </div>
+                      <div className={`p-3 rounded-xl ${iconBg}`}><span className="material-symbols-outlined">{icon}</span></div>
                     </div>
                     <h3 className="text-on-surface-variant text-label-sm uppercase mb-1">{label}</h3>
                     <p className="text-h3 font-h2 text-on-surface">{value}</p>
@@ -144,9 +128,7 @@ const AdminDashboard = () => {
                 ))}
               </div>
 
-              {/* Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                {/* Order Status Bar Chart */}
                 <div className="lg:col-span-2 glass-panel p-8 rounded-2xl bg-surface-container h-[360px] flex flex-col">
                   <h3 className="font-h3 text-on-surface mb-6">Order Status Distribution</h3>
                   <div className="flex-1 flex items-end gap-6 px-4 pb-8">
@@ -162,8 +144,6 @@ const AdminDashboard = () => {
                     ))}
                   </div>
                 </div>
-
-                {/* Category Pie Chart */}
                 <div className="glass-panel p-8 rounded-2xl bg-surface-container h-[360px] flex flex-col items-center">
                   <h3 className="font-h3 text-on-surface self-start mb-6">Category Distribution</h3>
                   <div className="relative w-44 h-44 mb-6">
@@ -171,11 +151,7 @@ const AdminDashboard = () => {
                       {categories.reduce((acc, cat, i) => {
                         const pct = totalCatCount > 0 ? (cat.count / totalCatCount) * 251.2 : 0;
                         acc.elements.push(
-                          <circle key={cat._id} cx="50" cy="50" fill="transparent" r="40"
-                            stroke={categoryColors[cat._id] || '#94a3b8'}
-                            strokeDasharray={`${pct} ${251.2 - pct}`}
-                            strokeDashoffset={-acc.offset}
-                            strokeWidth="20" />
+                          <circle key={cat._id} cx="50" cy="50" fill="transparent" r="40" stroke={categoryColors[cat._id] || '#94a3b8'} strokeDasharray={`${pct} ${251.2 - pct}`} strokeDashoffset={-acc.offset} strokeWidth="20" />
                         );
                         acc.offset += pct;
                         return acc;
@@ -196,6 +172,59 @@ const AdminDashboard = () => {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Issues Section */}
+              <div className="mb-8">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-h3 text-on-surface">Reported Issues</h3>
+                  {pendingIssues.length > 0 && (
+                    <span className="px-2 py-1 bg-error/20 text-error text-[10px] font-bold rounded border border-error/30">
+                      {pendingIssues.length} PENDING
+                    </span>
+                  )}
+                </div>
+                {issues.length > 0 ? (
+                  <div className="glass-panel overflow-hidden rounded-2xl bg-surface-container border border-outline-variant/30">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-outline-variant/30 bg-white/5">
+                          <th className="px-6 py-4 text-label-sm text-slate-400 font-medium">Order</th>
+                          <th className="px-6 py-4 text-label-sm text-slate-400 font-medium">Consumer</th>
+                          <th className="px-6 py-4 text-label-sm text-slate-400 font-medium">Farmer</th>
+                          <th className="px-6 py-4 text-label-sm text-slate-400 font-medium">Issue</th>
+                          <th className="px-6 py-4 text-label-sm text-slate-400 font-medium">Status</th>
+                          <th className="px-6 py-4 text-label-sm text-slate-400 font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant/10">
+                        {issues.map((issue) => (
+                          <tr key={issue._id} className="hover:bg-white/5 transition-colors">
+                            <td className="px-6 py-4 text-sm font-mono">{issue.orderId?.orderId || 'N/A'}</td>
+                            <td className="px-6 py-4 text-sm">{issue.consumerId?.name}</td>
+                            <td className="px-6 py-4 text-sm">{issue.farmerId?.name}</td>
+                            <td className="px-6 py-4 text-sm">{issue.issueType?.replace('_', ' ')} — {issue.message?.substring(0, 40)}...</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 rounded-full text-xs ${issueStatusColors[issue.status] || ''}`}>{issue.status}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              {issue.status === 'pending' && (
+                                <div className="flex gap-2">
+                                  <button onClick={() => resolveIssueMutation.mutate({ id: issue._id, status: 'resolved', adminReply: 'Issue resolved' })}
+                                    className="px-3 py-1 bg-primary/20 text-primary rounded text-xs font-bold hover:bg-primary/30">Resolve</button>
+                                  <button onClick={() => resolveIssueMutation.mutate({ id: issue._id, status: 'rejected', adminReply: 'Issue rejected' })}
+                                    className="px-3 py-1 bg-red-500/20 text-red-500 rounded text-xs font-bold hover:bg-red-500/30">Reject</button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="glass-panel p-8 rounded-2xl bg-surface-container text-center text-on-surface-variant">No issues reported.</div>
+                )}
               </div>
 
               {/* Users Table */}
@@ -219,9 +248,7 @@ const AdminDashboard = () => {
                         <tr key={u._id} className="hover:bg-white/5 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
-                                {u.name?.charAt(0)?.toUpperCase()}
-                              </div>
+                              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">{u.name?.charAt(0)?.toUpperCase()}</div>
                               <div>
                                 <div className="text-on-surface font-semibold text-body-md">{u.name}</div>
                                 <div className="text-slate-500 text-xs">{u.email}</div>
@@ -229,9 +256,7 @@ const AdminDashboard = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-3 py-1 text-[11px] font-bold rounded-full uppercase tracking-widest ${u.role === 'admin' ? 'bg-error/10 text-error border border-error/20' : u.role === 'farmer' ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-secondary-container/20 text-secondary border border-secondary/20'}`}>
-                              {u.role}
-                            </span>
+                            <span className={`px-3 py-1 text-[11px] font-bold rounded-full uppercase tracking-widest ${u.role === 'admin' ? 'bg-error/10 text-error border border-error/20' : u.role === 'farmer' ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-secondary-container/20 text-secondary border border-secondary/20'}`}>{u.role}</span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
@@ -252,9 +277,7 @@ const AdminDashboard = () => {
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="font-h3 text-on-surface">Pending Products</h3>
                   {a.pendingProducts > 0 && (
-                    <span className="px-2 py-1 bg-tertiary-container/20 text-tertiary-container text-[10px] font-bold rounded border border-tertiary-container/30">
-                      {a.pendingProducts} PENDING
-                    </span>
+                    <span className="px-2 py-1 bg-tertiary-container/20 text-tertiary-container text-[10px] font-bold rounded border border-tertiary-container/30">{a.pendingProducts} PENDING</span>
                   )}
                 </div>
                 {pendingProducts.length > 0 ? (
@@ -273,27 +296,18 @@ const AdminDashboard = () => {
                             <span className="text-primary font-bold">₹{p.price}</span>
                           </div>
                           <div className="flex gap-3 mt-4">
-                            <button onClick={() => approveMutation.mutate(p._id)} className="flex-1 py-2 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 transition-all" disabled={approveMutation.isPending}>
-                              Approve
-                            </button>
+                            <button onClick={() => approveMutation.mutate(p._id)} className="flex-1 py-2 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 transition-all" disabled={approveMutation.isPending}>Approve</button>
                             <button onClick={() => useUIStore.getState().showConfirm({
-                              title: 'Reject Product',
-                              message: 'Are you sure you want to reject this product?',
-                              confirmText: 'Reject',
-                              cancelText: 'Cancel',
+                              title: 'Reject Product', message: 'Are you sure?', confirmText: 'Reject', cancelText: 'Cancel',
                               onConfirm: () => deleteMutation.mutate(p._id),
-                            })} className="flex-1 py-2 border border-error/30 text-error rounded-lg text-xs font-bold hover:bg-error/10 transition-all">
-                              Reject
-                            </button>
+                            })} className="flex-1 py-2 border border-error/30 text-error rounded-lg text-xs font-bold hover:bg-error/10 transition-all">Reject</button>
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="glass-panel p-8 rounded-2xl bg-surface-container text-center text-on-surface-variant">
-                    No pending products to review.
-                  </div>
+                  <div className="glass-panel p-8 rounded-2xl bg-surface-container text-center text-on-surface-variant">No pending products to review.</div>
                 )}
               </div>
             </>

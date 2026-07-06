@@ -31,6 +31,7 @@ import farmerRoutes from './routes/farmerRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
+import issueRoutes from './routes/issueRoutes.js';
 
 process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION:', err.message || err);
@@ -78,6 +79,7 @@ app.use('/api/farmer', farmerRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/issues', issueRoutes);
 app.use('/api', chatBotRoutes);
 
 app.get('/', (req, res) => res.send('KrushiMart API Running'));

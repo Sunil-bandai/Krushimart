@@ -1,6 +1,6 @@
 import Review from '../models/Review.js';
 import Product from '../models/Product.js';
-import Order from '../models/Order.js';
+import SubOrder from '../models/SubOrder.js';
 
 export const addReview = async (req, res) => {
   try {
@@ -19,7 +19,7 @@ export const addReview = async (req, res) => {
       return res.status(400).json({ success: false, message: 'You have already reviewed this product' });
     }
 
-    const hasPurchased = await Order.findOne({
+    const hasPurchased = await SubOrder.findOne({
       consumerId: req.user._id,
       'items.productId': productId,
       status: 'delivered'
@@ -29,15 +29,13 @@ export const addReview = async (req, res) => {
     }
 
     const imagePaths = req.files?.map((file) => `/uploads/${file.filename}`) || [];
-    const reviewData = {
+    const review = await Review.create({
       productId,
       rating: numRating,
       comment,
       consumerId: req.user._id,
       images: imagePaths,
-    };
-
-    const review = await Review.create(reviewData);
+    });
 
     const ratingResult = await Review.aggregate([
       { $match: { productId: review.productId } },

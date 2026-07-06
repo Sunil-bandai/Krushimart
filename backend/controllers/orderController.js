@@ -1,22 +1,8 @@
 import Order from '../models/Order.js';
+import SubOrder from '../models/SubOrder.js';
 import User from '../models/User.js';
 import Product from '../models/Product.js';
 import { sendOrderConfirmationEmail, sendOrderStatusEmail } from '../utils/emailService.js';
-
-const FARMER_STATUSES = ['pending', 'confirmed', 'dispatched', 'delivered', 'cancelled'];
-
-const STATUS_RANK = { pending: 0, confirmed: 1, dispatched: 2, delivered: 3, cancelled: -1 };
-
-function computeOverallStatus(farmerStatuses) {
-  if (!farmerStatuses || farmerStatuses.length === 0) return 'pending';
-  const statuses = farmerStatuses.map(fs => fs.status);
-  if (statuses.every(s => s === 'delivered')) return 'delivered';
-  if (statuses.every(s => s === 'cancelled')) return 'cancelled';
-  const active = statuses.filter(s => s !== 'cancelled');
-  if (active.length === 0) return 'cancelled';
-  const lowest = active.reduce((min, s) => STATUS_RANK[s] < STATUS_RANK[min] ? s : min, active[0]);
-  return lowest;
-}
 
 export const placeOrder = async (req, res) => {
   try {
@@ -27,7 +13,8 @@ export const placeOrder = async (req, res) => {
 
     let totalAmount = 0;
     const verifiedItems = [];
-    const farmerIds = new Set();
+    const farmerMap = new Map();
+
     for (const item of items) {
       const product = await Product.findById(item.productId);
       if (!product) {
@@ -39,29 +26,58 @@ export const placeOrder = async (req, res) => {
       }
       totalAmount += product.price * qty;
       verifiedItems.push({ productId: product._id, farmer: product.farmer, quantity: qty, price: product.price });
-      farmerIds.add(product.farmer.toString());
+
+      const farmerId = product.farmer.toString();
+      if (!farmerMap.has(farmerId)) {
+        const farmer = await User.findById(product.farmer);
+        farmerMap.set(farmerId, {
+          farmerId: product.farmer,
+          farmerSnapshot: { name: farmer?.name || '', phone: farmer?.phone || '', address: farmer?.address || '' },
+          items: [],
+          subtotal: 0,
+        });
+      }
+      const entry = farmerMap.get(farmerId);
+      entry.items.push({ productId: product._id, quantity: qty, price: product.price });
+      entry.subtotal += product.price * qty;
+
       await Product.findByIdAndUpdate(product._id, { $inc: { stock: -qty } });
     }
 
-    const farmerStatuses = Array.from(farmerIds).map(farmerId => ({
-      farmer: farmerId,
-      status: 'pending'
-    }));
+    const orderId = await Order.generateOrderId();
 
     const order = await Order.create({
+      orderId,
       consumerId: req.user._id,
       items: verifiedItems,
       totalAmount,
       deliveryAddress,
-      farmerStatuses
+      status: 'pending',
     });
+
+    const subOrderIds = [];
+    for (const [, entry] of farmerMap) {
+      const subOrderId = `${orderId}-${entry.farmerSnapshot.name.split(' ')[0].toUpperCase()}`;
+      const subOrder = await SubOrder.create({
+        orderId: order._id,
+        subOrderId,
+        consumerId: req.user._id,
+        farmerId: entry.farmerId,
+        farmerSnapshot: entry.farmerSnapshot,
+        items: entry.items,
+        subtotal: entry.subtotal,
+        deliveryAddress,
+        status: 'pending',
+      });
+      subOrderIds.push(subOrder._id);
+    }
 
     const user = await User.findById(req.user._id);
     if (user) {
       sendOrderConfirmationEmail(user, order).catch(err => console.error('Order confirmation email error:', err.message));
     }
 
-    res.status(201).json({ success: true, message: 'Order placed', data: order });
+    res.status(201).json({ success: true, message: 'Order placed', data: { order, subOrderIds } });
   } catch (err) {
     console.error('placeOrder error:', err);
     res.status(500).json({ success: false, message: 'Server error placing order' });
@@ -70,16 +86,23 @@ export const placeOrder = async (req, res) => {
 
 export const myOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ consumerId: req.user._id })
-      .populate({
-        path: 'items.productId',
-        select: 'name image price farmer',
-        populate: { path: 'farmer', select: 'name phone address' }
+    const orders = await Order.find({ consumerId: req.user._id }).sort({ createdAt: -1 });
+
+    const ordersWithSubOrders = await Promise.all(
+      orders.map(async (order) => {
+        const subOrders = await SubOrder.find({ orderId: order._id })
+          .populate('items.productId', 'name image price unit')
+          .populate('farmerId', 'name');
+        return {
+          ...order.toObject(),
+          subOrders,
+        };
       })
-      .populate('farmerStatuses.farmer', 'name')
-      .sort({ createdAt: -1 });
-    res.json({ success: true, data: orders });
+    );
+
+    res.json({ success: true, data: ordersWithSubOrders });
   } catch (err) {
+    console.error('myOrders error:', err);
     res.status(500).json({ success: false, message: 'Server error fetching orders' });
   }
 };
@@ -87,91 +110,78 @@ export const myOrders = async (req, res) => {
 export const farmerOrders = async (req, res) => {
   try {
     const farmerId = req.user._id;
-
-    const orders = await Order.find({ 'farmerStatuses.farmer': farmerId })
+    const subOrders = await SubOrder.find({ farmerId })
       .populate('items.productId', 'name image price unit category')
       .populate('consumerId', 'name email phone address')
+      .populate('orderId', 'orderId status')
       .sort({ createdAt: -1 });
 
-    const result = orders.map(order => {
-      const farmerItems = order.items.filter(item => {
-        if (!item.farmer) return false;
-        return item.farmer.toString() === farmerId.toString();
-      });
-      const farmerEntry = order.farmerStatuses.find(
-        fs => fs.farmer.toString() === farmerId.toString()
-      );
-      return {
-        _id: order._id,
-        consumerId: order.consumerId,
-        items: farmerItems,
-        totalAmount: order.totalAmount,
-        deliveryAddress: order.deliveryAddress,
-        status: farmerEntry ? farmerEntry.status : order.status,
-        overallStatus: order.status,
-        createdAt: order.createdAt
-      };
-    }).filter(o => o.items.length > 0);
-
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: subOrders });
   } catch (err) {
     console.error('farmerOrders error:', err);
     res.status(500).json({ success: false, message: 'Server error fetching farmer orders' });
   }
 };
 
-const VALID_FARMER_TRANSITIONS = {
-  pending: ['confirmed', 'cancelled'],
-  confirmed: ['dispatched', 'cancelled'],
-  dispatched: ['delivered'],
-  delivered: [],
-  cancelled: [],
-};
-
 export const updateStatus = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
+    const { status } = req.body;
+    const VALID_TRANSITIONS = {
+      pending: ['confirmed', 'cancelled'],
+      confirmed: ['dispatched', 'cancelled'],
+      dispatched: ['delivered'],
+      delivered: [],
+      cancelled: [],
+    };
+
+    const subOrder = await SubOrder.findById(req.params.id);
+    if (!subOrder) {
+      return res.status(404).json({ success: false, message: 'Sub-order not found' });
     }
 
-    const newStatus = req.body.status;
-    if (!FARMER_STATUSES.includes(newStatus)) {
-      return res.status(400).json({ success: false, message: 'Invalid status value' });
+    if (subOrder.farmerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const farmerIdx = order.farmerStatuses.findIndex(
-      fs => fs.farmer.toString() === req.user._id.toString()
-    );
-    if (farmerIdx === -1) {
-      return res.status(403).json({ success: false, message: 'Not authorized to update this order' });
+    const allowed = VALID_TRANSITIONS[subOrder.status] || [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ success: false, message: `Cannot transition from '${subOrder.status}' to '${status}'` });
     }
 
-    const currentFarmerStatus = order.farmerStatuses[farmerIdx].status;
-    const allowedNext = VALID_FARMER_TRANSITIONS[currentFarmerStatus] || [];
-    if (!allowedNext.includes(newStatus)) {
-      return res.status(400).json({ success: false, message: `Cannot transition from '${currentFarmerStatus}' to '${newStatus}'` });
+    subOrder.status = status;
+    await subOrder.save();
+
+    const STATUS_RANK = { pending: 0, confirmed: 1, dispatched: 2, delivered: 3, cancelled: -1 };
+    const allSubOrders = await SubOrder.find({ orderId: subOrder.orderId });
+    const parentOrder = await Order.findById(subOrder.orderId);
+    if (parentOrder) {
+      const statuses = allSubOrders.map(so => so.status);
+      if (statuses.every(s => s === 'delivered')) parentOrder.status = 'delivered';
+      else if (statuses.every(s => s === 'cancelled')) parentOrder.status = 'cancelled';
+      else {
+        const active = statuses.filter(s => s !== 'cancelled');
+        parentOrder.status = active.length > 0
+          ? active.reduce((min, s) => STATUS_RANK[s] < STATUS_RANK[min] ? s : min, active[0])
+          : 'cancelled';
+      }
+      await parentOrder.save();
     }
 
-    order.farmerStatuses[farmerIdx].status = newStatus;
-    order.status = computeOverallStatus(order.farmerStatuses);
-    await order.save();
-
-    const updatedOrder = await Order.findById(order._id)
-      .populate('items.productId', 'name image price')
-      .populate('farmerStatuses.farmer', 'name');
-
-    if (currentFarmerStatus !== newStatus) {
-      const user = await User.findById(order.consumerId);
+    if (subOrder.status !== status) {
+      const user = await User.findById(subOrder.consumerId);
       if (user) {
-        sendOrderStatusEmail(user, updatedOrder, currentFarmerStatus, newStatus).catch(err => console.error('Status email error:', err.message));
+        sendOrderStatusEmail(user, parentOrder, subOrder.status, status).catch(err => console.error('Status email error:', err.message));
       }
     }
 
-    res.json({ success: true, message: 'Order status updated', data: updatedOrder });
+    const populated = await SubOrder.findById(subOrder._id)
+      .populate('items.productId', 'name image price')
+      .populate('farmerId', 'name');
+
+    res.json({ success: true, message: 'Status updated', data: populated });
   } catch (err) {
     console.error('updateStatus error:', err);
-    res.status(500).json({ success: false, message: 'Server error updating order status' });
+    res.status(500).json({ success: false, message: 'Server error updating status' });
   }
 };
 
@@ -180,9 +190,17 @@ export const getAllOrders = async (req, res) => {
     const orders = await Order.find()
       .populate('consumerId', 'name email')
       .populate('items.productId', 'name price')
-      .populate('farmerStatuses.farmer', 'name')
       .sort({ createdAt: -1 });
-    res.json({ success: true, data: orders });
+
+    const ordersWithSubOrders = await Promise.all(
+      orders.map(async (order) => {
+        const subOrders = await SubOrder.find({ orderId: order._id })
+          .populate('farmerId', 'name');
+        return { ...order.toObject(), subOrders };
+      })
+    );
+
+    res.json({ success: true, data: ordersWithSubOrders });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error fetching orders' });
   }

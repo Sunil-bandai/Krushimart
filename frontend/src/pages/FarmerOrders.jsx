@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import useAuthStore from '../store/authStore';
@@ -13,7 +12,7 @@ const statusColors = {
   confirmed: 'bg-blue-500/20 text-blue-500',
   dispatched: 'bg-orange-500/20 text-orange-500',
   delivered: 'bg-green-500/20 text-green-500',
-  cancelled: 'bg-red-500/20 text-red-500'
+  cancelled: 'bg-red-500/20 text-red-500',
 };
 
 const TRANSITIONS = {
@@ -46,16 +45,14 @@ const FarmerOrders = () => {
     },
     onError: (error) => {
       useUIStore.getState().showNotification(
-        error.response?.data?.message || 'Failed to update order status', 'error'
+        error.response?.data?.message || 'Failed to update status', 'error'
       );
     }
   });
 
-  const handleStatusChange = (orderId, newStatus) => {
-    updateStatusMutation.mutate({ id: orderId, status: newStatus });
+  const handleStatusChange = (subOrderId, newStatus) => {
+    updateStatusMutation.mutate({ id: subOrderId, status: newStatus });
   };
-
-  const getSubtotal = (items) => items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
     <div className="bg-background text-on-surface min-h-screen">
@@ -76,20 +73,23 @@ const FarmerOrders = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => (
-              <div key={order._id} className="glass-panel bg-surface-container/60 rounded-xl p-6">
+            {orders.map((sub) => (
+              <div key={sub._id} className="glass-panel bg-surface-container/60 rounded-xl p-6">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <p className="text-label-sm text-on-surface-variant">Order ID</p>
-                    <p className="font-mono">#{order._id?.slice(-8)}</p>
+                    <p className="font-mono text-sm font-bold">{sub.subOrderId || sub.orderId?.orderId}</p>
+                    <p className="text-xs text-on-surface-variant mt-1">
+                      {new Date(sub.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`px-3 py-1 rounded-full text-label-sm ${statusColors[order.status] || statusColors.pending}`}>
-                      Your status: {order.status}
+                    <span className={`px-3 py-1 rounded-full text-label-sm ${statusColors[sub.status] || statusColors.pending}`}>
+                      {sub.status}
                     </span>
-                    {order.overallStatus !== order.status && (
-                      <span className="px-3 py-1 rounded-full text-label-sm bg-surface-variant text-on-surface-variant">
-                        Overall: {order.overallStatus}
+                    {sub.orderId?.status && sub.orderId.status !== sub.status && (
+                      <span className="px-2 py-1 rounded-full text-xs bg-surface-variant text-on-surface-variant">
+                        Overall: {sub.orderId.status}
                       </span>
                     )}
                   </div>
@@ -97,30 +97,24 @@ const FarmerOrders = () => {
 
                 <div className="mb-4">
                   <p className="text-label-sm text-on-surface-variant">Customer</p>
-                  <p>{order.consumerId?.name}</p>
-                  <p className="text-sm text-on-surface-variant">{order.consumerId?.email}</p>
-                  {order.consumerId?.phone && (
-                    <a href={`tel:${order.consumerId.phone}`} className="text-sm text-primary hover:underline flex items-center gap-1 mt-1">
-                      <span className="material-symbols-outlined text-xs">call</span>
-                      {order.consumerId.phone}
-                    </a>
-                  )}
-                  {order.deliveryAddress && (
+                  <p>{sub.consumerId?.name}</p>
+                  <p className="text-sm text-on-surface-variant">{sub.consumerId?.email}</p>
+                  {sub.deliveryAddress && (
                     <p className="text-sm text-on-surface-variant mt-1 flex items-center gap-1">
                       <span className="material-symbols-outlined text-xs">location_on</span>
-                      {order.deliveryAddress}
+                      {sub.deliveryAddress}
                     </p>
                   )}
                 </div>
 
                 <div className="space-y-2 mb-4">
                   <p className="text-label-sm text-on-surface-variant">Your Items</p>
-                  {order.items?.map((item, idx) => (
+                  {sub.items?.map((item, idx) => (
                     <div key={idx} className="flex justify-between">
                       <div className="flex items-center gap-3">
-                        <img 
+                        <img
                           src={getImageSrc(item.productId?.image)}
-                          alt={item.productId?.name} 
+                          alt={item.productId?.name}
                           className="w-12 h-12 object-cover rounded-lg"
                         />
                         <div>
@@ -137,21 +131,16 @@ const FarmerOrders = () => {
 
                 <div className="border-t border-outline-variant pt-4 flex justify-between items-center">
                   <span className="font-bold">Your Subtotal</span>
-                  <span className="font-bold text-lg text-primary">₹{getSubtotal(order.items)}</span>
-                </div>
-
-                <div className="border-t border-outline-variant pt-4 flex justify-between items-center mb-1">
-                  <span className="text-sm text-on-surface-variant">Order Total (all farmers)</span>
-                  <span className="font-bold">₹{order.totalAmount}</span>
+                  <span className="font-bold text-lg text-primary">₹{sub.subtotal}</span>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-outline-variant">
                   <p className="text-label-sm text-on-surface-variant mb-2">Update Status</p>
                   <div className="flex gap-2">
-                    {(TRANSITIONS[order.status] || []).map((status) => (
+                    {(TRANSITIONS[sub.status] || []).map((status) => (
                       <button
                         key={status}
-                        onClick={() => handleStatusChange(order._id, status)}
+                        onClick={() => handleStatusChange(sub._id, status)}
                         className={`px-4 py-2 rounded-lg text-sm capitalize ${
                           status === 'cancelled'
                             ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30'
@@ -161,9 +150,9 @@ const FarmerOrders = () => {
                         {status}
                       </button>
                     ))}
-                    {(!TRANSITIONS[order.status] || TRANSITIONS[order.status].length === 0) && (
+                    {(!TRANSITIONS[sub.status] || TRANSITIONS[sub.status].length === 0) && (
                       <span className="text-sm text-on-surface-variant">
-                        {order.status === 'delivered' ? 'Order completed' : 'No actions available'}
+                        {sub.status === 'delivered' ? 'Order completed' : 'No actions available'}
                       </span>
                     )}
                   </div>
